@@ -1,3 +1,4 @@
+from django.http import Http404
 from django.shortcuts import redirect, render
 from .models import Categoria, Desafio, Flashcard, FlashcardDesafio
 from django.contrib import messages
@@ -115,3 +116,66 @@ def iniciar_desafio(request):
         desafio.save()
 
         return redirect(f'/flashcard/desafio/{desafio.id}')
+    
+def listar_desafio(request):
+    desafios = Desafio.objects.filter(user=request.user)
+    return render(
+        request,
+        'listar_desafio.html',
+        {
+            'desafios': desafios,
+        },
+    )
+
+def desafio(request, id):
+    desafio = Desafio.objects.get(id=id)
+    
+    if not desafio.user == request.user:
+        raise Http404()
+
+    if request.method == 'GET':
+        acertos = desafio.flashcards.filter(respondido=True).filter(acertou=True).count()
+        erros = desafio.flashcards.filter(respondido=True).filter(acertou=False).count()
+        faltantes = desafio.flashcards.filter(respondido=False).count()
+        return render(
+            request,
+            'desafio.html',
+            {
+                'desafio': desafio,
+                'acertos': acertos,
+                'erros': erros,
+                'faltantes':faltantes
+            },
+        )
+        
+def responder_flashcard(request, id):
+    flashcard_desafio = FlashcardDesafio.objects.get(id=id)
+    acertou = request.GET.get('acertou')
+    desafio_id = request.GET.get('desafio_id')
+    
+    if not flashcard_desafio.flashcard.user == request.user:
+        raise Http404()    
+
+    flashcard_desafio.respondido = True
+    flashcard_desafio.acertou = True if acertou == '1' else False
+    flashcard_desafio.save()
+    return redirect(f'/flashcard/desafio/{desafio_id}/')
+
+def relatorio(request, id):
+    desafio = Desafio.objects.get(id=id)
+
+
+    acertos = desafio.flashcards.filter(acertou=True).count()
+    erros = desafio.flashcards.filter(acertou=False).count()
+
+    dados = [acertos, erros]
+
+
+    categorias = desafio.categoria.all()
+    name_categoria = [i.nome for i in categorias]
+
+    dados2 = []
+    for categoria in categorias:
+        dados2.append(desafio.flashcards.filter(flashcard__categoria=categoria).filter(acertou=True).count())
+
+    return render(request, 'relatorio.html', {'desafio': desafio, 'dados': dados, 'categorias': name_categoria, 'dados2': dados2,},)
